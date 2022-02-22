@@ -42,14 +42,12 @@ SIZE_INTEGER = 3  # unsigned 16 bit integer
 
 class SPS30:
 
-    def __init__(self,  bus: int = 1, address: int = 0x69, sampling_period: int = 1, logger: str = None):
+    def __init__(self,  bus: int = 1, address: int = 0x69, logger: str = None):
         self.logger = None
         if logger:
             self.logger = logging.getLogger(logger)
 
-        self.sampling_period = sampling_period
         self.i2c = I2C(bus, address)
-        self.__data = Queue(maxsize=20)
         self.__valid = {
             "mass_density": False,
             "particle_count": False,
@@ -301,49 +299,27 @@ class SPS30:
 
         return self.__ieee754_number_conversion(size[0] << 24 | size[1] << 16 | size[2] << 8 | size[3])
 
-    def __read_measured_value(self) -> None:
-        while True:
-            try:
-                if not self.read_data_ready_flag():
-                    continue
-
-                self.i2c.write(CMD_READ_MEASURED_VALUES)
-                data = self.i2c.read(NBYTES_MEASURED_VALUES_FLOAT)
-
-                if self.__data.full():
-                    self.__data.get()
-
-                result = {
-                    "sensor_data": {
-                        "mass_density": self.__mass_density_measurement(data[:24]),
-                        "particle_count": self.__particle_count_measurement(data[24:54]),
-                        "particle_size": self.__particle_size_measurement(data[54:]),
-                        "mass_density_unit": "ug/m3",
-                        "particle_count_unit": "#/cm3",
-                        "particle_size_unit": "um"
-                    },
-                    "timestamp": int(datetime.now().timestamp())
-                }
-
-                self.__data.put(result if all(self.__valid.values()) else {})
-
-            except KeyboardInterrupt:
-                if self.logger:
-                    self.logger.warning("Stopping measurement...")
-                else:
-                    print("Stopping measurement...")
-
-                self.stop_measurement()
-                sys.exit()
-
-            except Exception as e:
-                if self.logger:
-                    self.logger.warning(f"{type(e).__name__}: {e}")
-                else:
-                    print(f"{type(e).__name__}: {e}")
-
-            finally:
-                sleep(self.sampling_period)
+    def get_measurement(self) -> dict:
+        try:
+            self.i2c.write(CMD_READ_MEASURED_VALUES)
+            data = self.i2c.read(NBYTES_MEASURED_VALUES_FLOAT)
+            result = {
+                "sensor_data": {
+                    "mass_density": self.__mass_density_measurement(data[:24]),
+                    "particle_count": self.__particle_count_measurement(data[24:54]),
+                    "particle_size": self.__particle_size_measurement(data[54:]),
+                    "mass_density_unit": "ug/m3",
+                    "particle_count_unit": "#/cm3",
+                    "particle_size_unit": "um"
+                },
+                "timestamp": int(datetime.now().timestamp())
+            }
+            return result if all(self.__valid.values()) else {}
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"{type(e).__name__}: {e}")
+            else:
+                print(f"{type(e).__name__}: {e}")
 
     def start_measurement(self) -> None:
         data_format = {
@@ -356,18 +332,7 @@ class SPS30:
         data.append(self.crc_calc(data[2:4]))
         self.i2c.write(data)
         sleep(0.05)
-        self.__run()
 
-    def get_measurement(self) -> dict:
-        if self.__data.empty():
-            return {}
-
-        return self.__data.get()
-
-    def stop_measurement(self) -> None:
+    def close(self) -> None:
         self.i2c.write(CMD_STOP_MEASUREMENT)
         self.i2c.close()
-
-    def __run(self) -> None:
-        threading.Thread(target=self.__read_measured_value,
-                         daemon=True).start()
