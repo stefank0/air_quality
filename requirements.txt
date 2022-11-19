@@ -1,2 +1,4 @@
 sensirion-i2c-sgp4x
 sensirion-i2c-sht
+django
+pandas

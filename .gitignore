@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+.idea
 __pycache__/
 *.py[cod]
 *$py.class
@@ -138,3 +139,4 @@ dmypy.json
 cython_debug/
 
 .vscode/
+/air_quality/write_request.temp

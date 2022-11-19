@@ -17,7 +17,8 @@ sps = SPS30()
 
 
 try:
-    with open('data.csv', 'a', newline='') as f:
+    filename = os.path.join("air_quality", "data.csv")
+    with open(filename, 'a', newline='') as f:
         writer = csv.writer(f)
         sps.start_measurement()
         with LinuxI2cTransceiver('/dev/i2c-1') as i2c_transceiver:
