@@ -140,3 +140,4 @@ cython_debug/
 
 .vscode/
 /air_quality/write_request.temp
+*.csv

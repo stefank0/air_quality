@@ -1,6 +1,8 @@
 import csv
 import os
+import statistics
 import time
+from gpiozero import LED
 
 from sensirion_i2c_driver import LinuxI2cTransceiver, I2cConnection
 from sensirion_i2c_sgp4x import Sgp40I2cDevice
@@ -13,47 +15,125 @@ def need_to_write(data_rows):
     return len(data_rows) >= 60 * 24 or os.path.exists("write_request.temp")
 
 
-sps = SPS30()
+sps = None
+led = LED(26)
+is_red = False
+
+
+print('starting measurements')
 
 
 try:
     filename = os.path.join("air_quality", "data.csv")
     with open(filename, 'a', newline='') as f:
         writer = csv.writer(f)
-        sps.start_measurement()
         with LinuxI2cTransceiver('/dev/i2c-1') as i2c_transceiver:
             connection = I2cConnection(i2c_transceiver)
             sgp40 = Sgp40I2cDevice(connection)
             shtc3 = Shtc3I2cDevice(connection)
             rows = []
-            i = 0
+            data = {
+              't': [],
+              'rh': [],
+              'voc': [],
+              'pm2_5_mass': [],
+              'pm2_5_count': [],
+              'pm10_mass': [],
+              'pm10_count': [],
+              'pm_size': [],
+            }
             while True:
-                i += 1
                 sleep_time = 1.0 - (time.time() % 1.0)		# wait remaining time of this second
                 if sleep_time < 0.5:
                     print(f'sleep_time: {sleep_time}')
+                hour = time.localtime().tm_hour
+                minute = time.localtime().tm_min
+                is_measuring = (hour < 9) or (minute < 3)
+                try:
+                    if sps is None:
+                        if is_measuring:
+                            sps = SPS30()
+                            time.sleep(1)
+                            sps.start_measurement()
+                            time.sleep(1)
+                    else:
+                        if not is_measuring:
+                            sps.close()
+                            sps = None
+                except Exception as e:
+                    print(e)
                 time.sleep(sleep_time)
-                pm = sps.get_measurement()['sensor_data']
-                pm2_5_mass = pm['mass_density']['pm2.5']
-                pm2_5_count = pm['particle_count']['pm2.5']
-                pm10_mass = pm['mass_density']['pm10']
-                pm10_count = pm['particle_count']['pm10']
-                pm_size = pm['particle_size']
+                if sps is None:
+                    pm2_5_mass = 0.0
+                    pm2_5_count = 0.0
+                    pm10_mass = 0.0
+                    pm10_count = 0.0
+                    pm_size = 0.0
+                else:
+                    pm = sps.get_measurement()['sensor_data']
+                    pm2_5_mass = pm['mass_density']['pm2.5']
+                    pm2_5_count = pm['particle_count']['pm2.5']
+                    pm10_mass = pm['mass_density']['pm10']
+                    pm10_count = pm['particle_count']['pm10']
+                    pm_size = pm['particle_size']
                 t, rh = shtc3.measure()
+                # temperatuur lijkt ongeveer 2 graden te hoog (t.o.v. thermostaat)
                 t = round(t.degrees_celsius, 3)
+                # in Utrecht lijkt het regelmatig te vochtig te zijn
                 rh = round(rh.percent_rh, 3)
+                # 31000 is goed, 30500 is matig, lager dan 30000 is slecht
                 voc = sgp40.measure_raw(relative_humidity=rh, temperature=t).ticks
-                if i % 60 == 0:
+                data['t'].append(t)
+                data['rh'].append(rh)
+                data['voc'].append(voc)
+                data['pm2_5_mass'].append(pm2_5_mass)
+                data['pm2_5_count'].append(pm2_5_count)
+                data['pm10_mass'].append(pm10_mass)
+                data['pm10_count'].append(pm10_count)
+                data['pm_size'].append(pm_size)
+                second = time.localtime().tm_sec
+                if second == 55:
+                    if (minute < 3) or (rh < 40) or (rh > 70) or (voc < 30000) or (pm2_5_mass > 15):
+                        if not is_red:
+                            led.on()
+                            is_red = True
+                    else:
+                        if is_red:
+                            led.off()
+                            is_red = False
                     now = int(time.time())
-                    row = [now, t, rh, voc, pm2_5_mass, pm2_5_count, pm10_mass, pm10_count, pm_size]
+                    row = [
+                        now,
+                        round(statistics.median(data['t']), 2),
+                        round(statistics.median(data['rh']), 2),
+                        round(statistics.median(data['voc']), 2),
+                        round(statistics.median(data['pm2_5_mass']), 2),
+                        round(statistics.median(data['pm2_5_count']), 2),
+                        round(statistics.median(data['pm10_mass']), 2),
+                        round(statistics.median(data['pm10_count']), 2),
+                        round(statistics.median(data['pm_size']), 2)
+                    ]
+                    print(hour, minute, t, rh, voc, pm2_5_mass)
                     rows.append(row)
+                    data = {
+                      't': [],
+                      'rh': [],
+                      'voc': [],
+                      'pm2_5_mass': [],
+                      'pm2_5_count': [],
+                      'pm10_mass': [],
+                      'pm10_count': [],
+                      'pm_size': [],
+                    }
                 if need_to_write(rows):
                     writer.writerows(rows)
                     f.flush()
                     rows.clear()
-                    os.remove("write_request.temp")
+                    if os.path.exists("write_request.temp"):
+                        os.remove("write_request.temp")
 except Exception as e:
     print('Closing')
-    sps.close()
+    if sps is not None:
+        sps.close()
     print('Closed')
     print(e)
