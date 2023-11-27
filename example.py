@@ -18,6 +18,8 @@ def need_to_write(data_rows):
 sps = None
 led = LED(26)
 is_red = False
+latest_pm2_5_masses = [0.0, 0.0, 0.0]
+pm_threshold = 15
 
 
 print('starting measurements')
@@ -48,14 +50,12 @@ try:
                     print(f'sleep_time: {sleep_time}')
                 hour = time.localtime().tm_hour
                 minute = time.localtime().tm_min
-                is_measuring = (hour < 9) or (minute < 3)
+                is_measuring = (minute < 3) or any(m > pm_threshold for m in latest_pm2_5_masses)
                 try:
                     if sps is None:
                         if is_measuring:
                             sps = SPS30()
-                            time.sleep(1)
                             sps.start_measurement()
-                            time.sleep(1)
                     else:
                         if not is_measuring:
                             sps.close()
@@ -76,13 +76,15 @@ try:
                     pm10_mass = pm['mass_density']['pm10']
                     pm10_count = pm['particle_count']['pm10']
                     pm_size = pm['particle_size']
+                    latest_pm2_5_masses.append(pm2_5_mass)
+                    latest_pm2_5_masses.pop(0)
                 t, rh = shtc3.measure()
                 # temperatuur lijkt ongeveer 2 graden te hoog (t.o.v. thermostaat)
-                t = round(t.degrees_celsius, 3)
+                t = round(t.degrees_celsius, 3) - 2.0         # TODO: calibrate t and rh to another sensor
                 # in Utrecht lijkt het regelmatig te vochtig te zijn
                 rh = round(rh.percent_rh, 3)
                 # 31000 is goed, 30500 is matig, lager dan 30000 is slecht
-                voc = sgp40.measure_raw(relative_humidity=rh, temperature=t).ticks
+                voc = sgp40.measure_raw(relative_humidity=rh, temperature=t).ticks      # TODO: use Sensirion VOC algorithm?
                 data['t'].append(t)
                 data['rh'].append(rh)
                 data['voc'].append(voc)
@@ -93,7 +95,7 @@ try:
                 data['pm_size'].append(pm_size)
                 second = time.localtime().tm_sec
                 if second == 55:
-                    if (minute < 3) or (rh < 40) or (rh > 70) or (voc < 30000) or (pm2_5_mass > 15):
+                    if (rh < 40) or (rh > 70) or (voc < 30000) or (pm2_5_mass > pm_threshold):
                         if not is_red:
                             led.on()
                             is_red = True
@@ -113,7 +115,7 @@ try:
                         round(statistics.median(data['pm10_count']), 2),
                         round(statistics.median(data['pm_size']), 2)
                     ]
-                    print(hour, minute, t, rh, voc, pm2_5_mass)
+                    print(hour, minute, t, rh, voc, latest_pm2_5_masses[-1])
                     rows.append(row)
                     data = {
                       't': [],
