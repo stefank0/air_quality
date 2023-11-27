@@ -80,7 +80,7 @@ try:
                     latest_pm2_5_masses.pop(0)
                 t, rh = shtc3.measure()
                 # temperatuur lijkt ongeveer 2 graden te hoog (t.o.v. thermostaat)
-                t = round(t.degrees_celsius, 3) - 2.0         # TODO: calibrate t and rh to another sensor
+                t = round(t.degrees_celsius - 2.0, 3)         # TODO: calibrate t and rh to another sensor
                 # in Utrecht lijkt het regelmatig te vochtig te zijn
                 rh = round(rh.percent_rh, 3)
                 # 31000 is goed, 30500 is matig, lager dan 30000 is slecht
