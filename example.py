@@ -128,6 +128,7 @@ try:
                       'pm_size': [],
                     }
                 if need_to_write(rows):
+                    print('write data to disk')
                     writer.writerows(rows)
                     f.flush()
                     rows.clear()
