@@ -2,6 +2,9 @@ import csv
 import os
 import statistics
 import time
+
+os.environ['GPIOZERO_PIN_FACTORY'] = 'pigpio'
+
 from gpiozero import LED
 
 from sensirion_i2c_driver import LinuxI2cTransceiver, I2cConnection
@@ -12,7 +15,7 @@ from sps30 import SPS30
 
 
 def need_to_write(data_rows):
-    return len(data_rows) >= 60 * 24 or os.path.exists("write_request.temp")
+    return len(data_rows) >= 60 * 24 or os.path.exists("write.tmp")
 
 
 sps = None
@@ -46,8 +49,6 @@ try:
             }
             while True:
                 sleep_time = 1.0 - (time.time() % 1.0)		# wait remaining time of this second
-                if sleep_time < 0.5:
-                    print(f'sleep_time: {sleep_time}')
                 hour = time.localtime().tm_hour
                 minute = time.localtime().tm_min
                 is_measuring = (minute < 3) or any(m > pm_threshold for m in latest_pm2_5_masses)
@@ -132,8 +133,8 @@ try:
                     writer.writerows(rows)
                     f.flush()
                     rows.clear()
-                    if os.path.exists("write_request.temp"):
-                        os.remove("write_request.temp")
+                    if os.path.exists("write.tmp"):
+                        os.remove("write.tmp")
 except Exception as e:
     print('Closing')
     if sps is not None:
