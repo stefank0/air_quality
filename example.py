@@ -23,6 +23,7 @@ led = LED(26)
 is_red = False
 latest_pm2_5_masses = [0.0, 0.0, 0.0]
 pm_threshold = 15
+retries = 0
 
 
 print('starting measurements')
@@ -61,8 +62,11 @@ try:
                         if not is_measuring:
                             sps.close()
                             sps = None
+                    retries = 0
                 except Exception as e:
-                    print(e)
+                    retries += 1
+                    if retries > 1:     # for some reason the first attempt fails with i2c remote IO error, timeouts do not help
+                        print(e)
                 time.sleep(sleep_time)
                 if sps is None:
                     pm2_5_mass = 0.0
@@ -77,8 +81,6 @@ try:
                     pm10_mass = pm['mass_density']['pm10']
                     pm10_count = pm['particle_count']['pm10']
                     pm_size = pm['particle_size']
-                    latest_pm2_5_masses.append(pm2_5_mass)
-                    latest_pm2_5_masses.pop(0)
                 t, rh = shtc3.measure()
                 # temperatuur lijkt ongeveer 2 graden te hoog (t.o.v. thermostaat)
                 t = round(t.degrees_celsius - 2.0, 3)         # TODO: calibrate t and rh to another sensor
@@ -96,28 +98,14 @@ try:
                 data['pm_size'].append(pm_size)
                 second = time.localtime().tm_sec
                 if second == 55:
-                    if (rh < 40) or (rh > 70) or (voc < 30000) or (pm2_5_mass > pm_threshold):
-                        if not is_red:
-                            led.on()
-                            is_red = True
-                    else:
-                        if is_red:
-                            led.off()
-                            is_red = False
-                    now = int(time.time())
-                    row = [
-                        now,
-                        round(statistics.median(data['t']), 2),
-                        round(statistics.median(data['rh']), 2),
-                        round(statistics.median(data['voc']), 2),
-                        round(statistics.median(data['pm2_5_mass']), 2),
-                        round(statistics.median(data['pm2_5_count']), 2),
-                        round(statistics.median(data['pm10_mass']), 2),
-                        round(statistics.median(data['pm10_count']), 2),
-                        round(statistics.median(data['pm_size']), 2)
-                    ]
-                    print(hour, minute, t, rh, voc, latest_pm2_5_masses[-1])
-                    rows.append(row)
+                    t = round(statistics.median(data['t']), 2)
+                    rh = round(statistics.median(data['rh']), 2)
+                    voc = round(statistics.median(data['voc']))
+                    pm2_5_mass = round(statistics.median(data['pm2_5_mass']), 2)
+                    pm2_5_count = round(statistics.median(data['pm2_5_count']), 2)
+                    pm10_mass = round(statistics.median(data['pm10_mass']), 2)
+                    pm10_count = round(statistics.median(data['pm10_count']), 2)
+                    pm_size = round(statistics.median(data['pm_size']), 2)
                     data = {
                       't': [],
                       'rh': [],
@@ -128,16 +116,29 @@ try:
                       'pm10_count': [],
                       'pm_size': [],
                     }
-                if need_to_write(rows):
-                    print('write data to disk')
-                    writer.writerows(rows)
-                    f.flush()
-                    rows.clear()
-                    if os.path.exists("write.tmp"):
-                        os.remove("write.tmp")
+                    if sps is not None:
+                        latest_pm2_5_masses.append(pm2_5_mass)
+                        latest_pm2_5_masses.pop(0)
+                    if (rh < 40) or (rh > 70) or (voc < 30000) or (pm2_5_mass > pm_threshold):
+                        if not is_red:
+                            led.on()
+                            is_red = True
+                    else:
+                        if is_red:
+                            led.off()
+                            is_red = False
+                    print(hour, minute, t, rh, voc, latest_pm2_5_masses[-1])
+                    now = int(time.time())
+                    row = [now, t, rh, voc, pm2_5_mass, pm2_5_count, pm10_mass, pm10_count, pm_size]
+                    rows.append(row)
+                    if need_to_write(rows):
+                        print('write data to disk')
+                        writer.writerows(rows)
+                        f.flush()
+                        rows.clear()
+                        if os.path.exists("write.tmp"):
+                            os.remove("write.tmp")
 except Exception as e:
-    print('Closing')
     if sps is not None:
         sps.close()
-    print('Closed')
     print(e)
