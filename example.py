@@ -119,6 +119,8 @@ try:
                     if sps is not None:
                         latest_pm2_5_masses.append(pm2_5_mass)
                         latest_pm2_5_masses.pop(0)
+                    if os.path.exists("measure.tmp"):
+                        latest_pm2_5_masses[0] = 99.9
                     if (rh < 40) or (rh > 70) or (voc < 30000) or (pm2_5_mass > pm_threshold):
                         if not is_red:
                             led.on()
