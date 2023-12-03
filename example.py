@@ -24,6 +24,7 @@ is_red = False
 latest_pm2_5_masses = [0.0, 0.0, 0.0]
 pm_threshold = 15
 retries = 0
+is_enabled = True
 
 
 print('starting measurements')
@@ -52,7 +53,7 @@ try:
                 sleep_time = 1.0 - (time.time() % 1.0)		# wait remaining time of this second
                 hour = time.localtime().tm_hour
                 minute = time.localtime().tm_min
-                is_measuring = (minute < 3) or any(m > pm_threshold for m in latest_pm2_5_masses)
+                is_measuring = is_enabled and ((minute < 3) or any(m > pm_threshold for m in latest_pm2_5_masses))
                 try:
                     if sps is None:
                         if is_measuring:
@@ -140,6 +141,7 @@ try:
                         rows.clear()
                         if os.path.exists("write.tmp"):
                             os.remove("write.tmp")
+                    is_enabled = not os.path.exists("disable.tmp")
 except Exception as e:
     if sps is not None:
         sps.close()
