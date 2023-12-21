@@ -83,10 +83,10 @@ try:
                     pm10_count = pm['particle_count']['pm10']
                     pm_size = pm['particle_size']
                 t, rh = shtc3.measure()
-                # temperatuur lijkt ongeveer 2 graden te hoog (t.o.v. thermostaat)
-                t = round(t.degrees_celsius - 2.0, 3)         # TODO: calibrate t and rh to another sensor
+                # temperature is accurate, but reads ~2 degrees higher because the box heats due to raspberry
+                t = round(t.degrees_celsius - 2.0, 3)
                 # in Utrecht lijkt het regelmatig te vochtig te zijn
-                rh = round(rh.percent_rh, 3)
+                rh = round(rh.percent_rh, 3)        # compares quite well to other sensor (Jonne/Shiphrah piano)
                 # 31000 is goed, 30500 is matig, lager dan 30000 is slecht
                 voc = sgp40.measure_raw(relative_humidity=rh, temperature=t).ticks      # TODO: use Sensirion VOC algorithm?
                 data['t'].append(t)
